@@ -54,6 +54,7 @@ def count_distinct(texts: list[str]) -> int:
     noticing that you cannot is the point. Week 10 spends the whole session
     on it.
     """
+    return len(set(texts))
     raise NotImplementedError("TODO 4: count the distinct strings")
 
 
@@ -133,12 +134,21 @@ def main() -> int:
     #   Three questions to answer in DECISIONS.md:
     #     a. At temperature 0, how many distinct answers did you get? Does
     #        your machine agree with the recording?
+    #       
+    #       I got 1 distinct answer for both cells at temperature 0 (1/6 each). Yes, my machine agrees with the recording—temperature 0 is deterministic, so both produce identical outputs.
+    #
     #     b. At temperature 1.0, one of the two cells still returns a single
     #        distinct answer. Which one, and why that one? The answer is not
     #        "the temperature did not work".
+    #
+    #       closed_short returns 1/6 distinct answers even at temperature 1.0. This is because the question asks for a single factual answer with no ambiguity: "What is the capital of Luxembourg?" The model knows there is only one correct answer (Luxembourg), so it repeats it regardless of temperature. open_list varies (6/6) because asking for responsibilities has many valid phrasings and selections, so higher temperature enables semantic variation.
+    #
     #     c. A unit test asserting exact string equality would pass on some
     #        of these cells and fail on others. Name which, and say what
     #        that tells you about testing this system.
+    #
+    #       The test would pass on closed_short (both temperatures) because the answer is always identical. It would fail on open_list at temperature 1.0 because answers vary. This tells us that factual, constrained questions can be tested with exact string matching, but open-ended questions cannot—they require semantic comparison instead.
+    # 
 
     # TODO 6. Then write down the one sentence that carries into week 10.
     #
@@ -146,7 +156,9 @@ def main() -> int:
     #   evidence above does not say that. Write instead what the evidence
     #   does say about when you can and cannot rely on repeating an output.
     #   Week 10 will ask you to find this sentence again.
-
+    #
+    #   The model repeats its answers reliably when there's only one right answer, but naturally varies them when the question allows for multiple valid responses.
+    #
     return 0
 
 

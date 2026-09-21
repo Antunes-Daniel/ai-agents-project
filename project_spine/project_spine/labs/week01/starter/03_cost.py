@@ -74,7 +74,17 @@ def main() -> int:
     #   Then answer, in DECISIONS.md: your system will call two different
     #   models. What does this measurement tell you about switching between
     #   them inside one request, and what would you do instead?
-
+    print ("\n--- TODO 7: measure the cold start ---\n")
+    
+    subprocess.run(["ollama", "stop", SMALL.name])
+    reply, secs1 = timed(client, SHORT, SMALL.name)
+    print(f"Cold start: {secs1:.2f}s")
+    reply, secs2 = timed(client, SHORT, SMALL.name)
+    print(f"Hot start: {secs2:.2f}s")
+    print(f"Cold start took {secs1/secs2:.0f} times as long as hot start.\n")
+    
+    # If I need to call two different models in one request, the cold start overhead means it's much slower than staying with one model. I would avoid model switching within a request and instead batch similar work by model
+    
     # TODO 8. Estimate what a real evaluation run would cost hosted.
     #
     #   In week 10 you build a golden set and run it. Assume 200 cases, each
@@ -90,6 +100,16 @@ def main() -> int:
     #
     #   Label them as estimates. They are not measurements and the price
     #   list is dated {PRICE_DATE}.
+    print("\n--- TODO 8: estimate the hosted cost ---\n")
+    input_tokens = rows[1]["prompt_tokens"]
+    output_tokens = rows[1]["completion_tokens"]
+    runs = 200 * 14
+    total_input_tokens = input_tokens * runs
+    total_output_tokens = output_tokens * runs
+    small_cost = estimate(total_input_tokens, total_output_tokens, tier="small")
+    large_cost = estimate(total_input_tokens, total_output_tokens, tier="large")
+    print(f"Small tier (nightly):  €{small_cost:.2f}")
+    print(f"Large tier (release):  €{large_cost:.2f}")
 
     write_json("artifacts/week01_cost.json",
                {"rows": rows, "price_list_date": PRICE_DATE})
