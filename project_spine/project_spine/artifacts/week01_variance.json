@@ -6,36 +6,36 @@
       "n": 6,
       "distinct": 1,
       "mean_chars": 10,
-      "median_latency_s": 0.558,
-      "min_latency_s": 0.531,
-      "max_latency_s": 1.821
+      "median_latency_s": 0.548,
+      "min_latency_s": 0.54,
+      "max_latency_s": 1.698
     },
     {
       "cell": "closed_short|t10",
       "n": 6,
       "distinct": 1,
       "mean_chars": 10,
-      "median_latency_s": 0.533,
-      "min_latency_s": 0.53,
-      "max_latency_s": 0.607
+      "median_latency_s": 0.542,
+      "min_latency_s": 0.538,
+      "max_latency_s": 0.648
     },
     {
       "cell": "open_list|t00",
       "n": 6,
       "distinct": 1,
       "mean_chars": 241,
-      "median_latency_s": 8.674,
-      "min_latency_s": 8.522,
-      "max_latency_s": 8.993
+      "median_latency_s": 10.509,
+      "min_latency_s": 8.691,
+      "max_latency_s": 12.788
     },
     {
       "cell": "open_list|t10",
       "n": 6,
       "distinct": 6,
-      "mean_chars": 190,
-      "median_latency_s": 6.904,
-      "min_latency_s": 5.91,
-      "max_latency_s": 8.266
+      "mean_chars": 187,
+      "median_latency_s": 8.153,
+      "min_latency_s": 5.752,
+      "max_latency_s": 9.518
     }
   ]
 }

@@ -108,8 +108,8 @@ def main() -> int:
     total_output_tokens = output_tokens * runs
     small_cost = estimate(total_input_tokens, total_output_tokens, tier="small")
     large_cost = estimate(total_input_tokens, total_output_tokens, tier="large")
-    print(f"Small tier (nightly):  €{small_cost:.2f}")
-    print(f"Large tier (release):  €{large_cost:.2f}")
+    print(f"Small tier (nightly):  €{small_cost}")
+    print(f"Large tier (release):  €{large_cost}")
 
     write_json("artifacts/week01_cost.json",
                {"rows": rows, "price_list_date": PRICE_DATE})
