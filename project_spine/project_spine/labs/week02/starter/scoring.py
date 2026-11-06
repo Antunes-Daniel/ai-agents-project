@@ -137,6 +137,8 @@ def score_all(records, golds, docs) -> Scoreboard:
             board.failures.append((doc.id, "all", "validation failed"))
             continue
         
+        board.total += 1
+        
         # Score this record
         results = score_one(record, gold, doc.text)
         

@@ -67,7 +67,24 @@ def score_routes(results, queries) -> RouteScore:
     wrong, whether the evidence was verbatim, which policy check fired, the
     confidence value, and whether the query was one of the ambiguous four.
     """
-    raise NotImplementedError("TODO 5: score the routes")
+    s = RouteScore()
+    s.total = len(results)
+    for r, q in zip(results, queries):
+        # Headline = what the sender experienced (applied_route), not what the
+        # classifier wanted. The intention is still available on r.decision.
+        hit = r.applied_route == q.route
+        h, n = s.per_route.get(q.route, [0, 0])
+        s.per_route[q.route] = [h + hit, n + 1]
+        if not hit:
+            s.confusion[(q.route, r.applied_route)] += 1
+        s.evidence_ok += r.evidence_ok
+        if r.policy_fired:
+            s.policy_fired[r.policy_fired] += 1
+        s.confidences.append(r.decision.confidence)
+        if q.ambiguous:
+            s.ambiguous_total += 1
+            s.ambiguous_hits += hit
+    return s
 
 
 # --------------------------------------------------------------------------

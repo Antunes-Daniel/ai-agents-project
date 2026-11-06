@@ -87,6 +87,33 @@ def run_router(client, model=SMALL.name):
     return routed_all, metas_c, metas_a
 
 
+def grow_gold_set() -> None:
+    """TODO 6. Append the 24 routing cases to the one shared gold set."""
+    from project.fixtures import load_or_reference
+    from queries import QUERIES as Q
+    gold, source = load_or_reference("artifacts/goldset.json")
+    print(f"gold set source: {source}")
+    have = {c.case_id for c in gold.cases}
+    added = 0
+    for q in Q:
+        cid = f"RT-{q.id[2:]}"
+        if cid in have:
+            continue
+        tags = [f"lang:{q.lang}", "task:routing", f"route:{q.route}"]
+        if q.ambiguous:
+            tags.append("ambiguous")
+        gold.cases.append(GoldCase(
+            case_id=cid, week_added=3, question=q.text,
+            expected={"route": q.route},
+            expected_behavior=(f"routed to {q.route}"
+                               + (" by the documented convention; two routes "
+                                  "are defensible" if q.ambiguous else "")),
+            slice_tags=tags, must_refuse=False))
+        added += 1
+    write_json("artifacts/goldset.json", gold.model_dump())
+    print(f"gold set: added {added}, now {len(gold.cases)} cases")
+
+
 def totals(*meta_lists):
     tok = sum(m["prompt_tokens"] + m["completion_tokens"]
               for ms in meta_lists for m in ms)
@@ -130,7 +157,9 @@ def main() -> int:
         "routing_call_tokens": c_tok,
     })
 
-    # TODO 6. Grow the gold set.
+    grow_gold_set()
+
+    # TODO 6 (done in grow_gold_set above). Grow the gold set.
     #
     #   Week 2 wrote ten extraction cases to artifacts/goldset.json. Add the
     #   twenty four routing cases to the SAME file rather than starting a

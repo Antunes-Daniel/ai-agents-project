@@ -10,6 +10,7 @@ decisions, and the decisions are where the marks are.
 from __future__ import annotations
 
 import time
+import json
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -55,7 +56,22 @@ def classify(client, text: str, model: str = SMALL.name,
     what makes it cheap enough to be worth adding, and it is what makes its
     output inspectable.
     """
-    raise NotImplementedError("TODO 2: the classifying call")
+    t0 = time.perf_counter()
+    reply = client.chat.completions.create(
+        model=model, temperature=temperature, max_tokens=200,
+        messages=[{"role": "system", "content": SYSTEM_ROUTER},
+                  {"role": "user", "content": text}],
+        response_format={"type": "json_schema", "json_schema": {
+            "name": "decision", "schema": Decision.model_json_schema()}})
+    raw = reply.choices[0].message.content or ""
+    meta = {"seconds": time.perf_counter() - t0,
+            "prompt_tokens": reply.usage.prompt_tokens,
+            "completion_tokens": reply.usage.completion_tokens,
+            "raw": raw}
+    try:
+        return Decision.model_validate_json(raw), meta
+    except ValidationError:
+        return None, meta
 
 
 # --------------------------------------------------------------------------
@@ -68,7 +84,12 @@ def classify(client, text: str, model: str = SMALL.name,
 # exercise exists to catch. Run the classifier over the twenty four queries
 # first, print the confidences, and then decide. On one of the two course
 # models the answer will surprise you.
-CONFIDENCE_FLOOR = None      # TODO 3a
+#
+# Chosen after printing the distribution on the recording (qwen3:4b-instruct):
+# 0.0 x1, 0.95 x1, 0.98 x1, 0.99 x13, 0.999 x8. Everything but one value sits
+# at or above 0.95, so 0.9 leaves a clear gap and fires only on the outlier.
+# On qwen2.5:7b the values are only {0.95, 1.0}: no floor can fire there.
+CONFIDENCE_FLOOR = 0.9
 
 # TODO 3b. Where does anything the policy rejects go?
 #
@@ -76,7 +97,11 @@ CONFIDENCE_FLOOR = None      # TODO 3a
 # DOES on the sender's behalf, and pick the one whose actions are easiest to
 # undo. One of the five logs a ticket, one escalates to a human, and one
 # only answers. That should decide it.
-SAFE_DEFAULT = None          # TODO 3b
+#
+# info: it only answers, logs nothing and escalates nothing, so a wrong
+# answer is the easiest to undo. request creates a ticket; complaint
+# escalates to a human.
+SAFE_DEFAULT = "info"
 
 
 def apply_policy(decision: Decision | None, text: str) -> Routed:
@@ -102,7 +127,22 @@ def apply_policy(decision: Decision | None, text: str) -> Routed:
     it None when the decision stood. You will count these at the checkpoint,
     and "the policy fired sometimes" is not a count.
     """
-    raise NotImplementedError("TODO 3: the policy layer")
+    if decision is None:
+        placeholder = Decision(route=SAFE_DEFAULT, confidence=0.0, evidence="")
+        return Routed(decision=placeholder, applied_route=SAFE_DEFAULT,
+                      policy_fired="invalid_decision", evidence_ok=False)
+
+    # Empty evidence is "in" every string, so it has to be rejected explicitly.
+    ev = decision.evidence
+    evidence_ok = bool(ev.strip()) and ev in text
+    if not evidence_ok:
+        return Routed(decision=decision, applied_route=SAFE_DEFAULT,
+                      policy_fired="evidence_not_verbatim", evidence_ok=False)
+    if decision.confidence < CONFIDENCE_FLOOR:
+        return Routed(decision=decision, applied_route=SAFE_DEFAULT,
+                      policy_fired="below_threshold", evidence_ok=True)
+    return Routed(decision=decision, applied_route=decision.route,
+                  policy_fired=None, evidence_ok=True)
 
 
 # --------------------------------------------------------------------------
