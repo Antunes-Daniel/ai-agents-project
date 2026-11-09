@@ -10,7 +10,6 @@ decisions, and the decisions are where the marks are.
 from __future__ import annotations
 
 import time
-import json
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError
@@ -62,16 +61,17 @@ def classify(client, text: str, model: str = SMALL.name,
         messages=[{"role": "system", "content": SYSTEM_ROUTER},
                   {"role": "user", "content": text}],
         response_format={"type": "json_schema", "json_schema": {
-            "name": "decision", "schema": Decision.model_json_schema()}})
-    raw = reply.choices[0].message.content or ""
+            "name": "decision",
+            "schema": Decision.model_json_schema()}})
+    raw = reply.choices[0].message.content
     meta = {"seconds": time.perf_counter() - t0,
             "prompt_tokens": reply.usage.prompt_tokens,
             "completion_tokens": reply.usage.completion_tokens,
             "raw": raw}
     try:
         return Decision.model_validate_json(raw), meta
-    except ValidationError:
-        return None, meta
+    except (ValidationError, ValueError):
+        return None, meta        # a count, not an exception
 
 
 # --------------------------------------------------------------------------
@@ -85,11 +85,22 @@ def classify(client, text: str, model: str = SMALL.name,
 # first, print the confidences, and then decide. On one of the two course
 # models the answer will surprise you.
 #
-# Chosen after printing the distribution on the recording (qwen3:4b-instruct):
-# 0.0 x1, 0.95 x1, 0.98 x1, 0.99 x13, 0.999 x8. Everything but one value sits
-# at or above 0.95, so 0.9 leaves a clear gap and fires only on the outlier.
-# On qwen2.5:7b the values are only {0.95, 1.0}: no floor can fire there.
-CONFIDENCE_FLOOR = 0.9
+# What the recording showed (24 queries, temperature 0):
+#   qwen3:4b-instruct  min 0.00, max 0.999, 5 distinct values. Every wrong
+#       route (Q-20, Q-21, Q-24) scored 0.98 to 0.99, the same as the right
+#       ones. The only low value is Q-22 (0.00), a prompt injection that was
+#       routed CORRECTLY to `other`.
+#   qwen2.5:7b         min 0.95, max 1.00, 2 distinct values. No floor
+#       between 0 and 0.95 can ever fire, and one above 0.95 fires on nearly
+#       everything.
+# So on neither model does confidence separate right from wrong. Any floor in
+# (0.00, 0.95) behaves identically on the small model, and I chose 0.5 as the
+# middle of that dead zone. It fires on one query out of 24, and that one is
+# a correct routing, so it is a cost, not a catch. It is kept because the
+# model is saying "I do not know" in the only way it can and a floor that can
+# never fire is worse documentation than one that fires once. The real
+# protection against misroutes has to come from elsewhere.
+CONFIDENCE_FLOOR = 0.5      # TODO 3a
 
 # TODO 3b. Where does anything the policy rejects go?
 #
@@ -98,10 +109,20 @@ CONFIDENCE_FLOOR = 0.9
 # undo. One of the five logs a ticket, one escalates to a human, and one
 # only answers. That should decide it.
 #
-# info: it only answers, logs nothing and escalates nothing, so a wrong
-# answer is the easiest to undo. request creates a ticket; complaint
-# escalates to a human.
-SAFE_DEFAULT = "info"
+# request   logs a ticket on the sender's behalf (a side effect someone has
+#           to find and close).
+# complaint escalates to a human (a side effect that lands on a person).
+# status    reports on state and asks for a reference number.
+# other     tells the sender it is not help desk business, which is a
+#           refusal.
+# info      only answers, writes nothing, escalates nothing, and the answer
+#           is forbidden to state any fact it does not have.
+# `info` has the least to undo. The cost is that a real request that lands
+# here gets an answer and no ticket, which is a silent drop. That is the
+# direction the small model already errs in, so the safe default and the
+# classifier's own weakness point the same way, and that is noted in
+# DECISIONS.md.
+SAFE_DEFAULT = "info"          # TODO 3b
 
 
 def apply_policy(decision: Decision | None, text: str) -> Routed:
@@ -132,17 +153,16 @@ def apply_policy(decision: Decision | None, text: str) -> Routed:
         return Routed(decision=placeholder, applied_route=SAFE_DEFAULT,
                       policy_fired="invalid_decision", evidence_ok=False)
 
-    # Empty evidence is "in" every string, so it has to be rejected explicitly.
-    ev = decision.evidence
-    evidence_ok = bool(ev.strip()) and ev in text
+    span = decision.evidence
+    evidence_ok = bool(span.strip()) and span in text      # exact substring
+
     if not evidence_ok:
         return Routed(decision=decision, applied_route=SAFE_DEFAULT,
                       policy_fired="evidence_not_verbatim", evidence_ok=False)
     if decision.confidence < CONFIDENCE_FLOOR:
         return Routed(decision=decision, applied_route=SAFE_DEFAULT,
                       policy_fired="below_threshold", evidence_ok=True)
-    return Routed(decision=decision, applied_route=decision.route,
-                  policy_fired=None, evidence_ok=True)
+    return Routed(decision=decision, applied_route=decision.route)
 
 
 # --------------------------------------------------------------------------

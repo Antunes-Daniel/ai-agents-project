@@ -31,6 +31,7 @@ class RouteScore:
     ambiguous_total: int = 0
     ambiguous_hits: int = 0
     confidences: list[float] = field(default_factory=list)
+    intent_hits: int = 0      # decision.route == gold, before the policy
 
     @property
     def hits(self) -> int:
@@ -67,23 +68,25 @@ def score_routes(results, queries) -> RouteScore:
     wrong, whether the evidence was verbatim, which policy check fired, the
     confidence value, and whether the query was one of the ambiguous four.
     """
+    # Headline number: applied_route, what the sender experienced. The
+    # classifier's intention is kept in intent_hits and printed beside it.
     s = RouteScore()
-    s.total = len(results)
-    for r, q in zip(results, queries):
-        # Headline = what the sender experienced (applied_route), not what the
-        # classifier wanted. The intention is still available on r.decision.
-        hit = r.applied_route == q.route
-        h, n = s.per_route.get(q.route, [0, 0])
-        s.per_route[q.route] = [h + hit, n + 1]
-        if not hit:
+    for q, r in zip(queries, results, strict=True):
+        hit, n = s.per_route.get(q.route, [0, 0])
+        ok = r.applied_route == q.route
+        s.per_route[q.route] = [hit + ok, n + 1]
+        if not ok:
             s.confusion[(q.route, r.applied_route)] += 1
-        s.evidence_ok += r.evidence_ok
+        if r.decision.route == q.route:
+            s.intent_hits += 1
         if r.policy_fired:
             s.policy_fired[r.policy_fired] += 1
+        s.evidence_ok += bool(r.evidence_ok)
         s.confidences.append(r.decision.confidence)
+        s.total += 1
         if q.ambiguous:
             s.ambiguous_total += 1
-            s.ambiguous_hits += hit
+            s.ambiguous_hits += ok
     return s
 
 
@@ -93,6 +96,8 @@ def score_routes(results, queries) -> RouteScore:
 
 def report(s: RouteScore, label: str) -> str:
     lines = [f"{label}: {s.hits}/{s.total} routed correctly"]
+    lines.append(f"  classifier's own route, before the policy: "
+                 f"{s.intent_hits}/{s.total}")
     lines.append(f"  excluding the ambiguous four: "
                  f"{s.unambiguous_hits}/{s.unambiguous_total}")
     lines.append("  per route: " + "  ".join(

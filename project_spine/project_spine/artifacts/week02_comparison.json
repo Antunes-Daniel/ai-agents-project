@@ -2,20 +2,20 @@
   "zero_shot": {
     "hits": {
       "category": 9,
-      "urgency": 6,
-      "due_date": 2,
+      "urgency": 10,
+      "due_date": 7,
       "quote": 10
     },
     "invalid": 0
   },
   "few_shot": {
     "hits": {
-      "category": 7,
-      "urgency": 9,
-      "due_date": 5,
-      "quote": 9
+      "category": 9,
+      "urgency": 10,
+      "due_date": 7,
+      "quote": 10
     },
     "invalid": 0
   },
-  "extra_input_tokens_per_call": 152.0
+  "extra_input_tokens_per_call": 0.0
 }

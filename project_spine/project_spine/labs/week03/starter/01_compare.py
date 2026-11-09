@@ -91,8 +91,9 @@ def grow_gold_set() -> None:
     """TODO 6. Append the 24 routing cases to the one shared gold set."""
     from project.fixtures import load_or_reference
     from queries import QUERIES as Q
-    gold, source = load_or_reference("artifacts/goldset.json")
+    gold_dict, source = load_or_reference("goldset.json", lab=LAB)
     print(f"gold set source: {source}")
+    gold = GoldSet.model_validate(gold_dict)
     have = {c.case_id for c in gold.cases}
     added = 0
     for q in Q:

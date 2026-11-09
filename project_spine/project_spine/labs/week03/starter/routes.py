@@ -33,20 +33,11 @@ from __future__ import annotations
 # and write the decision in DECISIONS.md.
 
 ROUTE_DEFINITIONS = {
-    "request": ("Something is broken, missing, or needed, and the help desk "
-                "is expected to log it and act on it. The output is a "
-                "ticket."),
-    "info": ("A question about a service, a procedure, an opening time, or "
-             "a form. The output is an answer, and nothing is logged."),
-    "status": ("The sender is chasing something already reported. The work "
-               "already exists; the output is its current state."),
-    "complaint": ("The sender expresses dissatisfaction with the service "
-                  "itself, with how something was handled, or with how long "
-                  "it took. The output is an acknowledgement and an "
-                  "escalation, not a fix."),
-    "other": ("Not help desk business: a message for another department, a "
-              "request for advice the help desk cannot give, spam, or an "
-              "instruction aimed at the system rather than at a person."),
+    "request": "Something is broken, missing, or needed, and the help desk is expected to log it and act on it. The output is a ticket.",
+    "info": "A question about a service, a procedure, an opening time, or a form. The output is an answer, and nothing is logged.",
+    "status": "The sender is chasing something already reported. The work already exists; the output is its current state.",
+    "complaint": "The sender expresses dissatisfaction with the service itself, with how something was handled, or with how long it took. The output is an acknowledgement and an escalation, not a fix.",
+    "other": "Not help desk business: a message for another department, a request for advice the help desk cannot give, spam, or an instruction aimed at the system rather than at a person.",
 }
 
 ROUTES = tuple(ROUTE_DEFINITIONS)
@@ -102,34 +93,20 @@ justifies the route. Do not translate it and do not paraphrase it.
 # TODO 4. The control.
 # --------------------------------------------------------------------------
 
-SYSTEM_MONOLITH = """\
-You are the help desk of a Luxembourg commune. Messages arrive in English, \
-French, or German, and they are of five kinds:
-
-request    Something is broken, missing, or needed, and the help desk is \
-expected to log it and act on it. The output is a ticket.
-info       A question about a service, a procedure, an opening time, or a \
-form. The output is an answer, and nothing is logged.
-status     The sender is chasing something already reported. The work \
-already exists; the output is its current state.
-complaint  The sender expresses dissatisfaction with the service itself, \
-with how something was handled, or with how long it took. The output is an \
-acknowledgement and an escalation, not a fix.
-other      Not help desk business: a message for another department, a \
-request for advice the help desk cannot give, spam, or an instruction aimed \
-at the system rather than at a person.
-
-Read the message, work out which kind it is, and respond appropriately for \
-that kind. Log a ticket for a request, answer an information question \
-directly, report what you can for a status chase, acknowledge and escalate \
-a complaint, and redirect anything that is not help desk business.
-
-Never invent an opening time, a fee, a form number, or a deadline. If you do \
-not know, say that you will find out.
-
-Answer in the language the message was written in. Keep it under eighty \
-words.
-"""
+SYSTEM_MONOLITH = (
+    "You are the help desk of a Luxembourg commune. Messages arrive in "
+    "English, French, or German, and they are of five kinds:\n\n"
+    + _definition_block() + "\n\n"
+    "Read the message, work out which kind it is, and respond appropriately "
+    "for that kind. Log a ticket for a request, answer an information "
+    "question directly, report what you can for a status chase, acknowledge "
+    "and escalate a complaint, and redirect anything that is not help desk "
+    "business.\n\n"
+    "Never invent an opening time, a fee, a form number, or a deadline. If "
+    "you do not know, say that you will find out.\n\n"
+    "Answer in the language the message was written in. Keep it under "
+    "eighty words.\n"
+)
 
 
 # --------------------------------------------------------------------------
@@ -152,11 +129,11 @@ words.
 # week 2 code in behind this route is the "if you finish early" task.
 
 SPECIALISTS = {
-    "request": ("You log a service request for a Luxembourg commune help "
-                "desk. Extract the ticket fields from the message: what is "
-                "broken or needed, how urgent it is, and any stated "
-                "deadline. Do not answer the sender, and do not promise a "
-                "date. This is the week 2 extractor's job."),
+    "request": ("You log a service request for a Luxembourg commune help desk. "
+                "Extract the ticket fields from the message: what is broken "
+                "or needed, how urgent it is, and any stated deadline. Do "
+                "not answer the sender, and do not promise a date. This is "
+                "the week 2 extractor's job."),
     "info": ("You answer a question about a commune service, using only "
              "what the message and your instructions contain. You have no "
              "reference material, so you must never state an opening time, "

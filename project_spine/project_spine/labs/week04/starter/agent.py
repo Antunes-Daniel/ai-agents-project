@@ -46,7 +46,14 @@ def to_openai_schema(schema: dict[str, Any]) -> dict[str, Any]:
     tools.py calls it "input_schema". Nothing about your tool changes, which
     is the point: the envelope is plumbing and the description is design.
     """
-    raise NotImplementedError("TODO 1: convert the schema envelope")
+    return {
+        "type": "function",
+        "function": {
+            "name": schema["name"],
+            "description": schema["description"],
+            "parameters": schema["input_schema"],
+        },
+    }
 
 
 SCHEMAS = [to_openai_schema(s) for s in ANTHROPIC_SCHEMAS]
@@ -102,6 +109,8 @@ class Run:
     cap_fired: str | None = None
     saw_injection: bool = False       # did the hostile text reach the model
     tool_errors: int = 0
+    # One entry per model call and per tool call: kind, name, seconds, note.
+    spans: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def stopped_cleanly(self) -> bool:
@@ -138,7 +147,39 @@ def run_tool_call(name: str, raw_arguments: str) -> tuple[Any, bool]:
     paste it into its answer, and you have just told whoever asked the
     question what your directory layout is.
     """
-    raise NotImplementedError("TODO 5: validate, execute, catch, cap")
+    fn = DISPATCH.get(name)
+    if fn is None:
+        return (f"Error: there is no tool named '{name}'. The available "
+                f"tools are: {', '.join(DISPATCH)}.", True)
+
+    try:
+        args = json.loads(raw_arguments) if (raw_arguments or "").strip() \
+            else {}
+    except (json.JSONDecodeError, TypeError):
+        return ("Error: the arguments were not valid JSON. Send a single "
+                "JSON object, for example {\"query\": \"waste fee\"}.", True)
+    if not isinstance(args, dict):
+        return ("Error: the arguments must be a JSON object with named "
+                "fields, not a list or a bare value.", True)
+
+    try:
+        result = fn(**args)
+    except ValueError as exc:
+        # Our own tools raise ValueError with a message written for the model.
+        return (f"Error: {exc}", True)
+    except TypeError:
+        # Wrong or missing argument names. Do not echo the exception text.
+        return (f"Error: wrong arguments for '{name}'. Check the argument "
+                f"names and types against the tool description.", True)
+    except Exception as exc:  # noqa: BLE001 - the loop must survive any tool
+        # Type name only: never the message, the path, or the stack.
+        return (f"Error: the tool '{name}' failed ({type(exc).__name__}). "
+                f"Try different arguments or answer without it.", True)
+
+    text = json.dumps(result, ensure_ascii=False)
+    if len(text) > MAX_RESULT_CHARS:
+        text = text[:MAX_RESULT_CHARS] + " ...[truncated]"
+    return (text, False)
 
 
 # --------------------------------------------------------------------------
@@ -186,7 +227,88 @@ def run_task(client, task, model: str = LARGE.name,
     depends on a model's judgment, which is not a property you can promise
     anybody.
     """
-    raise NotImplementedError("TODO 2, 3, 4: the loop and its caps")
+    run = Run(task_id=task.id)
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": task.question},
+    ]
+    # TODO 4. Progress = a document id not seen before in this run, or a
+    # successful compute result not seen before. Errors and repeats are not
+    # progress. A second search with different keywords that surfaces a new
+    # document does not count as a stall; the same query twice does.
+    seen: set[str] = set()
+    stalls = 0
+    started = time.perf_counter()
+
+    while True:
+        # TODO 3. Step cap: checked before the call, so a run that ends
+        # exactly on its last allowed step still gets to answer.
+        if run.steps >= max_steps:
+            run.cap_fired = "max_steps"
+            run.answer = _partial(
+                run, f"I reached the limit of {max_steps} steps")
+            break
+
+        # TODO 2. One model call.
+        run.steps += 1
+        t0 = time.perf_counter()
+        response = client.chat.completions.create(
+            model=model, messages=messages, tools=SCHEMAS, temperature=0.0)
+        usage = getattr(response, "usage", None)
+        run.tokens += getattr(usage, "total_tokens", 0) or 0
+        message = response.choices[0].message
+        calls = list(getattr(message, "tool_calls", None) or [])
+        run.spans.append({"kind": "model", "name": model,
+                          "seconds": time.perf_counter() - t0,
+                          "note": f"{len(calls)} tool call(s)"})
+
+        if not calls:
+            run.answer = (message.content or "").strip() or _partial(
+                run, "The model returned an empty answer")
+            break
+
+        # The assistant turn goes in BEFORE its tool results.
+        messages.append({
+            "role": "assistant",
+            "content": message.content or "",
+            "tool_calls": [
+                {"id": c.id, "type": "function",
+                 "function": {"name": c.function.name,
+                              "arguments": c.function.arguments}}
+                for c in calls],
+        })
+
+        progressed = False
+        for call in calls:
+            t1 = time.perf_counter()
+            name = call.function.name
+            result, errored = run_tool_call(name, call.function.arguments)
+            run.tool_calls.append(name)
+            run.tool_errors += int(errored)
+            run.spans.append({"kind": "tool", "name": name,
+                              "seconds": time.perf_counter() - t1,
+                              "note": "error" if errored else "ok"})
+            if INJECTION_MARKER in result:
+                run.saw_injection = True
+            if not errored:
+                keys = _doc_ids(result)
+                if name == "compute":
+                    keys = {f"compute:{result}"}
+                if keys - seen:
+                    progressed = True
+                    seen |= keys
+            messages.append({"role": "tool", "tool_call_id": call.id,
+                             "content": result})
+
+        stalls = 0 if progressed else stalls + 1
+        if stalls >= stall_limit:
+            run.cap_fired = "no_progress"
+            run.answer = _partial(
+                run, f"The last {stalls} steps found nothing new")
+            break
+
+    run.seconds = time.perf_counter() - started
+    return run
 
 
 def _partial(run: Run, reason: str) -> str:
