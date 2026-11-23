@@ -446,3 +446,62 @@ Anything already copied into a running conversation's messages. Deleting the fac
 ### Deferred
 
 Homework before week 7: build the A2A channel yourself from the marked sections in `03_a2a.py`; add an authorization check on the handle (today anyone holding it can read the case — week 12 will attack that); keep keyword `search` behind one method so week 7 can replace its body with embeddings without changing the signature.
+
+---
+
+## Week 7
+
+**Run conditions.** embedding model: nomic-embed-text:latest | dimensionality: 768 | chunk size: 600 | overlap: 80 | k: 5 | store: Chroma | date: 2026-11-23 | table from: the recording |
+
+### 1. The chunker
+
+size 600, overlap 80, because those are the starter defaults and they trade chunk-level precision against answer completeness. Smaller chunks raise the chance that a retrieved passage is entirely on topic but lower the chance that the whole answer lives inside one chunk; larger chunks do the reverse. Every chunk keeps its doc_id and section heading prepended to its text, so the gold set — which names sections, never chunk ids — can score any chunking configuration.
+
+### 2. The index
+
+About 95 chunks, 768 dimensions, seconds for one full indexing run recorded in `artifacts/week07_retrieval.json`. The index is built once per chunking configuration with `chromadb.EphemeralClient()` and a collection name that encodes the configuration (e.g. `s600`), so two chunkings can coexist during the block 3 chunk sweep without polluting each other.
+
+### 3. The table
+
+| qid | dense rank | keyword rank | recall@5 | tags |
+| --- | --- | --- | --- | --- |
+| Q01 | 1 | 1 | 1.00 | distractor, superseded |
+| Q02 | 1 | 1 | 1.00 | rare-token |
+| Q03 | 1 | 1 | 1.00 | easy |
+| Q04 | 1 | 1 | 1.00 | |
+| Q05 | 1 | 1 | 1.00 | |
+| Q06 | 1 | 1 | 1.00 | negation |
+| Q07 | 1 | 1 | 1.00 | easy |
+| Q08 | 1 | 1 | 1.00 | numeric |
+| Q09 | 1 | 1 | 1.00 | distractor |
+| Q10 | 1 | 1 | 1.00 | easy |
+| Q11 | 1 | 1 | 1.00 | easy |
+| Q12 | None | None | 0.00 | unanswerable |
+
+Ten of eleven answerable questions rank the gold chunk first on both retrievers; Q12 (unanswerable) returns nothing on either, which is correct.
+
+### 4. Good pipeline, or easy task?
+
+The task is easy, not the pipeline good. Ten of eleven answerable questions put the gold chunk at rank one on both retrievers, which is evidence that the questions are answerable from a single section and the corpus is small (about 95 chunks). A metric that cannot vary — recall at 20 saturates, precision at 5 is pinned at 0.20 — is not measuring anything; rank of the first gold chunk varies, which is why it is the entry here.
+
+### 5. The question that fails on both
+
+Question: Q12 ("Is there free wifi in the communal park?"). Dense rank: None. Keyword rank: None.
+
+Why it fails: Nothing in the corpus answers it, so both retrievers correctly return no gold section. Q12 has an empty gold section list and `answerable=False`; it is scored on refusal, not on retrieval. A pipeline that returns k results for an unanswerable question is wrong here.
+
+Would any chunk size fix it? No, because no chunk contains the answer. The failure is in the corpus, not the chunker — changing chunk size cannot create information that is not there.
+
+### 6. The gold-set correction
+
+The note said: Q02's note claimed "dense retrieval is the wrong tool for it and keyword search is the right one" because the query carries the rare exact token RB-1140b.
+
+My measurement said: dense retrieval ranks Q02's gold section first, just as it does on the other ten answerable questions. The rare exact token does not make dense retrieval lose.
+
+The corrected note: Q02's note now says dense retrieval still ranks its gold section first, and that an earlier draft wrongly claimed keyword search was the right tool.
+
+What it cost to find this: one measurement — running the table and reading the rank column. What it would have cost to not find it: a stretch exercise built on a false premise, and a term in which nobody noticed.
+
+### Deferred
+
+Homework before week 8: run a chunk sweep at 300, 600, and 1200 and report which questions move (names, not means); wire this retriever into the week 6 memory store's `search`; one sentence on what retrieval measurement still cannot tell you.
