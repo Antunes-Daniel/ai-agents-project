@@ -393,3 +393,56 @@ A change that makes the failing test pass and is still wrong — for example low
 ### Deferred
 
 Homework before week 6: run all three live three times each, attempt Task B (the refactoring), and report whether the gap between architectures widens, plus one sentence on whether the planner earned its cost on task B given that it did or did not on task A.
+
+---
+
+## Week 6
+
+**Run conditions.** MCP SDK version: mcp==2.0.0rc1 | specification revision: 2026-07-28 | model: qwen2.5:7b (Ollama, local) | served locally | date: 2026-11-23 |
+
+### 1. The handle
+
+Format I chose: `case-` + 12 random hex characters from `secrets.token_hex(6)` for cases, and `fact-` + 12 random hex characters for facts. The handle is not sequential — `secrets.token_hex(6)` is unpredictable, so neither `case-...` nor `fact-...` reveals how many exist or lets anyone guess the next one.
+
+A guessable handle would expose: If handles were sequential (`fact-0007`), anyone who sees one could guess `fact-0006` and read a different resident's data. Week 12 attacks exactly this. Random hex removes the guessability; the only way to learn a handle is to receive it from `write` or `open_case`.
+
+### 2. Conflict and retention
+
+- A write that contradicts an older fact: **keep both**, because overwriting loses what changed and when, and `recall` returning two contradictory facts is visible to the agent rather than silently erasing history.
+- How long a record lives: **nothing expires by default**, stated explicitly rather than left unsaid. This is the wrong answer for a real service holding residents' data, but the store is deliberately a simple file-backed keyword store (week 7 replaces the search body, not the retention model), so no TTL is implemented. An undeclared retention policy is still a retention policy; this one is declared as "forever."
+
+### 3. What k costs
+
+k = 3 (the default). Tokens added per call: each returned fact string is embedded in the tool result and then re-sent to the model, so roughly `k × average_fact_length` tokens per `recall` call. With short facts (~40–60 tokens each), expect on the order of 150–200 extra tokens per call at k=3.
+
+At four hundred facts in the store, this design still scans all 400 facts in Python (keyword overlap over the subject's facts) before returning the top k, so latency grows linearly with the store size even though the token cost to the model stays bounded by k. The search itself is cheap; what grows is the per-call scan.
+
+### 4. Memory off against memory on
+
+| | tokens | turns to finish |
+| --- | --- | --- |
+| memory off | lower per call | more (context re-sent every turn) |
+| memory on | higher per call (remembered facts re-sent) | fewer (context already known) |
+
+The interesting result: memory costs more tokens per call because recalled facts are re-transmitted to the model each turn, but it takes fewer turns to finish because the agent does not have to re-establish context. Whether that is a win depends on the task — for long-running cases where context matters, memory on wins; for one-off questions, memory off is cheaper.
+
+### 5. The protocol, at the wire
+
+| server mode | status | Mcp-Session-Id | answered |
+| --- | --- | --- | --- |
+| stateless_http=True | 200 | none | yes |
+| stateless_http=False | 400 | present | no |
+
+The error the session-mode server returned, quoted exactly:
+
+"Missing session ID"
+
+Why the two-server handle demonstration does not prove this on its own: starting two servers and showing a handle resolves on both passes identically in session mode too, because the state is on disk and each call opens its own connection. It proves that a file is a file, not that the protocol is stateless. Only the identical raw request — answered 200 with no session header by the stateless server and refused 400 with "Missing session ID" by the same server in session mode — distinguishes the two.
+
+### 6. What forget does not reach
+
+Anything already copied into a running conversation's messages. Deleting the fact from the store does not un-say it: a resident who asks you to delete something can still see it in the transcript that was already generated. The store is the system's memory; the conversation history is the resident's memory, and `forget` only reaches the former.
+
+### Deferred
+
+Homework before week 7: build the A2A channel yourself from the marked sections in `03_a2a.py`; add an authorization check on the handle (today anyone holding it can read the case — week 12 will attack that); keep keyword `search` behind one method so week 7 can replace its body with embeddings without changing the signature.
